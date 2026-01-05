@@ -12,6 +12,7 @@ def plot_timeseries(df: pd.DataFrame, date_col: str, value_col: str, title: Opti
     fig.update_yaxes(tickformat=".2f", showgrid=True)
     return fig
 
+
 def plot_combined_original_and_leveraged(orig: pd.DataFrame, leveraged: pd.DataFrame,
                                          date_col: str = "Date", value_col_orig: str = "Adj Close",
                                          value_col_lev: str = "Adj Close", title: Optional[str] = None):

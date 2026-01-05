@@ -5,8 +5,7 @@ import plotly.graph_objects as go
 
 def translate_operation_days_to_dates(df, operations):
     initial_date = df['Date'].min()
-    translated_ops = {"buys_tracker": [], "rotate_tracker": [], "sells_tracker": []}
-    print(operations)
+    translated_ops = {"buy_tracker": [], "rotate_tracker": [], "sell_tracker": []}
     for op_type in translated_ops.keys():
         for op_name, days in operations[op_type]:
             date = initial_date + timedelta(days=int(days))
@@ -15,8 +14,7 @@ def translate_operation_days_to_dates(df, operations):
     return translated_ops
 
 
-def add_operations_trace(fig, merged, operations, key, color, date_col):
-    ops = operations.get(key, [])
+def add_operations_trace(fig, merged, lev_factor_str, ops, color, label, date_col, legendgroup=None, showlegend=True):
     if not ops:
         return
 
@@ -28,7 +26,7 @@ def add_operations_trace(fig, merged, operations, key, color, date_col):
     })
 
     ops_df = ops_df.merge(
-        merged[[date_col, "x1"]],
+        merged[[date_col, lev_factor_str]],
         on=date_col,
         how="inner"
     )
@@ -36,9 +34,11 @@ def add_operations_trace(fig, merged, operations, key, color, date_col):
     fig.add_trace(
         go.Scatter(
             x=ops_df[date_col],
-            y=ops_df["x1"],
+            y=ops_df[lev_factor_str],
             mode="markers+text",
-            name=key.replace("_tracker", ""),
+            name=label,
+            legendgroup=legendgroup,
+            showlegend=showlegend,
             marker=dict(
                 size=9,
                 color=color,
@@ -53,6 +53,33 @@ def add_operations_trace(fig, merged, operations, key, color, date_col):
     )
 
 
+def plot_wallet_chart(assets):
+
+    bar_fig = go.Figure()
+
+    names = [label for label, _, _ in assets]
+    bar_fig.add_bar(
+        name="Invested",
+        x=names,
+        y=[invested for _, invested, _ in assets],
+    )
+
+    bar_fig.add_bar(
+        name="Current value",
+        x=names,
+        y=[value for _, _, value in assets],
+    )
+
+    bar_fig.update_layout(
+        barmode="group",
+        height=260,
+        margin=dict(l=10, r=10, t=30, b=10),
+        title="Invested vs Current value",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+
+    return bar_fig
+
 
 def plot_backtest(df, df_x2, df_x3, operations, date_col="Date"):
     d1 = df[[date_col, "Adj Close"]].rename(columns={"Adj Close": "x1"})
@@ -62,9 +89,9 @@ def plot_backtest(df, df_x2, df_x3, operations, date_col="Date"):
 
     # operations structure:
     # {
-    #   "buys_tracker": [(name, <date-1>), ..., (name, <date-n>)],
+    #   "buy_tracker": [(name, <date-1>), ..., (name, <date-n>)],
     #   "rotate_tracker": [(name, <date-1>), ..., (name, <date-n>)],
-    #   "sells_tracker": [(name, <date-1>), ..., (name, <date-n>)]
+    #   "sell_tracker": [(name, <date-1>), ..., (name, <date-n>)]
     # }
 
     fig = go.Figure()
@@ -72,11 +99,22 @@ def plot_backtest(df, df_x2, df_x3, operations, date_col="Date"):
     fig.add_trace(go.Scatter(x=merged[date_col], y=merged["x2"], mode='lines', name='x2', line={"color": "#9467bd"}))
     fig.add_trace(go.Scatter(x=merged[date_col], y=merged["x3"], mode='lines', name='x3', line={"color": "#7f7f7f"}))
 
-    # Operaciones
-    add_operations_trace(fig, merged, operations, "buys_tracker", "#2ecc71", date_col)
-    add_operations_trace(fig, merged, operations, "rotate_tracker", "#f39c12", date_col)
-    add_operations_trace(fig, merged, operations, "sells_tracker", "#e74c3c", date_col)
+    # Operations
+    x2_buys = [(name, day) for (name, day) in operations["buy_tracker"] if "x2" in name]
+    x3_buys = [(name, day) for (name, day) in operations["buy_tracker"] if "x3" in name]
+    add_operations_trace(fig, merged, "x2", x2_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=True)
+    add_operations_trace(fig, merged, "x3", x3_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=False)
+
+    x2_rotations = [(name, day) for (name, day) in operations["rotate_tracker"] if "x2" in name]
+    x3_rotations = [(name, day) for (name, day) in operations["rotate_tracker"] if "x3" in name]
+    add_operations_trace(fig, merged, "x2", x2_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=True)
+    add_operations_trace(fig, merged, "x3", x3_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=False)
+
+    x2_sells = [(name, day) for (name, day) in operations["sell_tracker"] if "x2" in name]
+    x3_sells = [(name, day) for (name, day) in operations["sell_tracker"] if "x3" in name]
+    add_operations_trace(fig, merged, "x2", x2_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=True)
+    add_operations_trace(fig, merged, "x3", x3_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=False)
 
     fig.update_layout(xaxis_title=date_col, yaxis_title="Value", height=500, template="plotly_white")
-    #fig.update_xaxes(rangeslider_visible=True)
+
     return fig

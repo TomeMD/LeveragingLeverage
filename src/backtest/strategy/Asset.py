@@ -2,34 +2,40 @@ import os
 
 class Asset:
 
-    def __init__(self, ticker, prices, max_eur, log_file):
+    def __init__(self, ticker, prices, max_eur, yield_target, yield_value, log_file):
         self.ticker = ticker
         self.prices = prices
         self.max_eur = max_eur
-        if os.path.exists(log_file):
-            os.remove(log_file)
+        self.yield_target = yield_target  # "none", "num" or "auto"
+        self.yield_value = -1 if yield_target == "none" else yield_value
         self.log_file = log_file
         self.invested_eur = 0
         self.invested_qty = 0
         self.invested_value = 0
         self.buys = []
 
-    def __create_buy(self, t, amount, qty):
+    def __get_yield_value(self, dd):
+        if self.yield_target == "auto":
+            return (1 / (1 + dd)) - 1  # Yield to recover 100% of current dropdown
+        return self.yield_value
+
+    def __create_buy(self, t, amount, qty, dd):
         return {
             "index": t,
             "ticker": self.ticker,
             "price": self.prices[t],
             "amount": amount,
             "qty": qty,
-            "yield_target": 0.5 if "x2" in self.ticker else 1.0,
+            "yield_value": self.__get_yield_value(dd),
+            "current_dd": dd,
             "invested_eur": self.invested_eur,
-            "pending_until_max": max(self.max_eur - self.invested_eur, 0)
+            "pending_until_max": max(self.max_eur - self.invested_eur, 0) if self.max_eur > 0 else -1
         }
 
     def __log_and_print(self, msg):
         with open(self.log_file, "a") as f:
             f.write(f"{msg}\n")
-        print(msg)
+        #print(msg)
 
     def __print_buy(self, buy_item):
         self.__log_and_print("************************ BUY ************************")
@@ -38,7 +44,8 @@ class Asset:
         self.__log_and_print(f"{'Price':<30}: {buy_item['price']:>10.2f}")
         self.__log_and_print(f"{'Amount':<30}: {buy_item['amount']:>10.2f}")
         self.__log_and_print(f"{'Quantity':<30}: {buy_item['qty']:>10.2f}")
-        self.__log_and_print(f"{'Yield target':<30}: {buy_item['yield_target']:>10.2f}")
+        self.__log_and_print(f"{'Yield target':<30}: {buy_item['yield_value']:>10.2f}")
+        self.__log_and_print(f"{'Current drawdown':<30}: {buy_item['current_dd']:>10.2f}")
         self.__log_and_print(f"{'Invested EUR (after buy)':<30}: {self.invested_eur:>10.2f}")
         self.__log_and_print(f"{'Pending until max':<30}: {buy_item['pending_until_max']:>10.2f}")
         self.__log_and_print("*****************************************************")
@@ -52,7 +59,7 @@ class Asset:
         self.__log_and_print(f"{'Sell price':<30}: {sell_price:>10.2f}")
         self.__log_and_print(f"{'Initial amount':<30}: {buy_item['amount']:>10.2f}")
         self.__log_and_print(f"{'Final amount':<30}: {final_amount:>10.2f}")
-        self.__log_and_print(f"{'Yield target':<30}: {buy_item['yield_target']:>10.2f}")
+        self.__log_and_print(f"{'Yield target':<30}: {buy_item['yield_value']:>10.2f}")
         self.__log_and_print(f"{'Final yield':<30}: {final_yield:>10.2f}")
         self.__log_and_print(f"{'Invested EUR (after sell)':<30}: {self.invested_eur:>10.2f}")
         self.__log_and_print("*****************************************************")
@@ -67,7 +74,7 @@ class Asset:
         self.__log_and_print(f"{'Initial amount':<30}: {buy_item['amount']:>10.2f}")
         self.__log_and_print(f"{'Sold amount':<30}: {(sell_qty*buy_item['price']):>10.2f}")
         self.__log_and_print(f"{'Final amount':<30}: {final_amount:>10.2f}")
-        self.__log_and_print(f"{'Yield target':<30}: {buy_item['yield_target']:>10.2f}")
+        self.__log_and_print(f"{'Yield target':<30}: {buy_item['yield_value']:>10.2f}")
         self.__log_and_print(f"{'Final yield':<30}: {final_yield:>10.2f}")
         self.__log_and_print(f"{'Invested EUR (after sell)':<30}: {self.invested_eur:>10.2f}")
         self.__log_and_print("*****************************************************")
@@ -78,6 +85,14 @@ class Asset:
     def get_invested_eur(self):
         return self.invested_eur
 
+    def get_last_price(self):
+        return self.prices[-1]
+
+    def get_invested_value(self, t=None):
+        if t is None:
+            return self.invested_qty * self.prices[-1]
+        return self.invested_qty * self.prices[t]
+
     def get_buys(self):
         return self.buys
 
@@ -85,7 +100,7 @@ class Asset:
         self.invested_value = self.invested_qty * self.prices[t]
         return max(self.invested_value - self.max_eur, 0)
 
-    def __add_buy(self, amount_eur, t):
+    def __add_buy(self, amount_eur, t, dd):
         # Compute invested qty
         # TODO: Compute real amount because we cannot invest fractional amounts
         qty = amount_eur / self.prices[t]
@@ -96,25 +111,25 @@ class Asset:
         self.invested_value = self.prices[t] * self.invested_qty
 
         # Create and add buy
-        self.buys.append(self.__create_buy(t, amount_eur, qty))
+        self.buys.append(self.__create_buy(t, amount_eur, qty, dd))
 
     # Buy shares using cash
-    def buy(self, amount_eur, t):
+    def buy(self, amount_eur, t, dd):
         # Check investment upper limit is not surpassed
-        if self.invested_eur + amount_eur > self.max_eur:
+        if self.max_eur > 0 and self.invested_eur + amount_eur > self.max_eur:
             raise ValueError(f"Trying to buy more than {self.max_eur} of {self.ticker} using cash. Aborting...")
 
         # Add buy
-        self.__add_buy(amount_eur, t)
+        self.__add_buy(amount_eur, t, dd)
 
         # Print buy info
         self.__log_and_print(f"Using cash to buy {amount_eur}€ of {self.ticker}")
         self.__print_buy(self.buys[-1])
 
     # Buy shares by rotating from higher leverage factors
-    def rotate_buy(self, from_ticker, amount_eur, t):
+    def rotate_buy(self, from_ticker, amount_eur, t, dd):
         # Add buy
-        self.__add_buy(amount_eur, t)
+        self.__add_buy(amount_eur, t, dd)
 
         # Print buy info
         self.__log_and_print(f"Rotating {amount_eur}€ from {from_ticker} to {self.ticker}")
@@ -156,7 +171,7 @@ class Asset:
         qty = buy_item['qty']
         buy_price = buy_item['price']
         current_price = self.prices[t]
-        target_yield = buy_item['yield_target']
+        target_yield = buy_item['yield_value']
         final_yield = (current_price / buy_price) - 1
         initial_amount = buy_item['amount']
         final_amount = current_price * qty
@@ -176,9 +191,10 @@ class Asset:
     def check_buys_yields(self, t):
         buys_ready = {}
         current_price = self.prices[t]
-        for i, buy in enumerate(self.buys):
-            if (current_price / buy['price']) - 1 > buy['yield_target']:
-                buys_ready[i] = buy
+        if self.yield_target != "none":
+            for i, buy in enumerate(self.buys):
+                if (current_price / buy['price']) - 1 > buy['yield_value']:
+                    buys_ready[i] = buy
         return buys_ready
 
 

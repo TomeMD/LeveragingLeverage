@@ -1,6 +1,5 @@
 import pandas as pd
 import yfinance as yf
-from typing import Tuple, Optional
 
 DEFAULT_DATE_COL = "date"
 
@@ -12,14 +11,6 @@ def load_csv(path):
 
 
 def download_dataset(ticker, interval, start_year, save=False):
-    """
-    Descarga desde Yahoo Finance un dataset predefinido (mapeo interno).
-    - ticker: clave en yf_tickers (por ejemplo 'sp500', 'nasdaq')
-    - interval: 'daily' o 'monthly'
-    - start_year: año inicial (int)
-    - save: si True guarda CSV en data/{ticker}_daily_{start_year}_2025.csv
-    Devuelve DataFrame con columnas estándar incluyendo 'Date' y 'Days'.
-    """
     yf_tickers = {'sp500': '^GSPC', 'nasdaq': 'QQQ'}
     yf_intervals = {'daily': '1d', 'monthly': '1mo'}
 

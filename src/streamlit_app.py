@@ -1,16 +1,19 @@
 import streamlit as st
+import os
 from src.sidebar import sidebar
 from src.dashboard import dashboard
 from src.backtest import backtest
 
+st.session_state['PROJECT_DIR'] = os.path.realpath(os.path.dirname(os.path.dirname(__file__)))
 
-st.set_page_config(page_title="Leverage Strategy", page_icon="📈")
+st.set_page_config(page_title="Leverage Strategy", page_icon="📈", layout="wide")
 
 st.title("📈 Leverage Strategy")
 
+# Load style
 st.markdown("""
 <style>
-/* Contenedor del radio */
+/* Radio container */
 div[role="radiogroup"] {
     display: flex;
     gap: 0.5rem;
@@ -19,7 +22,7 @@ div[role="radiogroup"] {
     margin-bottom: 0.5rem;
 }
 
-/* Cada opción */
+/* Options config */
 div[role="radio"] {
     padding: 0.4rem 0.2rem;
     border-radius: 6px 6px 0 0;
@@ -33,7 +36,7 @@ div[role="radio"]:hover {
     background-color: #eaeaea;
 }
 
-/* Seleccionado */
+/* Selected option */
 div[role="radio"][aria-checked="true"] {
     background-color: white;
     border: 1px solid e0e0e0;
@@ -42,11 +45,7 @@ div[role="radio"][aria-checked="true"] {
 </style>
 """, unsafe_allow_html=True)
 
-
-
-# --- HELPERS TO MODIFY SESSION STATE ---
-
-
+# Load page selector
 page = st.radio(
     "Navigation",
     ["📊 Dashboard", "🧪 Backtest", "ℹ️ Dataset Info", "⚙️ Settings"],
@@ -55,8 +54,10 @@ page = st.radio(
     label_visibility="collapsed",
 )
 
+# Load sidebar
 sidebar.run()
 
+# Load selected page
 if page == "📊 Dashboard":
     dashboard.run()
 
@@ -84,20 +85,10 @@ elif page == "⚙️ Settings":
 #filtered = df[(df['Days'] >= start_day) & (df['Days'] <= end_day)].copy()
 #st.write(f"Registros en rango: {len(filtered)} — {start_date} a {end_date}")
 
-# Mostrar tabla (expandable)
-#with st.expander("Mostrar tabla filtrada"):
-#    st.dataframe(filtered)
 
 
 
-# Ejemplo dividir en columnas
-# left_col, right_col = st.columns([2, 1])
-# with left_col:
-#       Contenido columna izquierda...
-# with right_col:
-#       Contenido columna derecha...
 
-# También podemos permitir graficar cualquier columna numérica del dataset filtrado
 
 
 

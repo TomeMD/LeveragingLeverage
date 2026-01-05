@@ -1,7 +1,7 @@
 import streamlit as st
 from datetime import date
 from src.sidebar.utils import load_csv, download_dataset
-from src.utils.utils import _add_available_plot, _clear_data, _leverage_dataset
+from src.utils.utils import _add_available_plot, _leverage_dataset, _reset_session, _clear_data, _clear_data_and_logs
 
 
 def run():
@@ -56,6 +56,9 @@ def run():
 
 
     st.sidebar.markdown("---")
-    if st.sidebar.button("Clean data"):
-        _clear_data()
+    if st.sidebar.button("Clean cache"):
+        _reset_session()
+        st.rerun()
+    if st.sidebar.button("Clean data and logs"):
+        _clear_data_and_logs()
         st.rerun()

@@ -2,20 +2,174 @@ import streamlit as st
 import pandas as pd
 from datetime import date, datetime
 from src.utils.utils import _show_day_range_slider, _leverage_dataset
-from src.backtest.utils import plot_backtest, translate_operation_days_to_dates
-from src.backtest.strategy import thresholds
+from src.backtest.utils import plot_backtest, translate_operation_days_to_dates, plot_wallet_chart
+from src.backtest.strategy.ThresholdsStrategy import ThresholdsStrategy
+
+STRATEGY_BUILDERS = {
+    "thresholds": ThresholdsStrategy,
+}
 
 
-def compute_backtest(capital, window):
-    # Very hard computations
-    return {"capital": capital, "window": window}
+def thresholds_df_to_dict(df):
+    thresholds = {}
+    for _, row in df.iterrows():
+        if pd.isna(row["drawdown"]) or pd.isna(row["buy_pct"]) or pd.isna(row["asset"]):
+            continue
+        thresholds[float(row["drawdown"])] = (float(row["buy_pct"]), str(row["asset"]))
+
+    if any(d >= 0 for d in thresholds):
+        st.error("Drawdowns must be negative values")
+        st.stop()
+
+    if any(p <= 0 or p > 1 for p, _ in thresholds.values()):
+        st.error("Buy percentage must be between 0 and 1")
+        st.stop()
+
+    return dict(sorted(thresholds.items(), reverse=True))
 
 
-def render_backtest_result(df, df_x2, df_x3, start_day, end_day, result):
-    x1_filtered = df[(df['Days'] >= start_day) & (df['Days'] <= end_day)].copy()
+def create_entry_thresholds_input():
+    st.markdown("### Entry thresholds")
+    default_thresholds_df = pd.DataFrame([
+        {"drawdown": -0.10, "buy_pct": 0.05, "asset": "x2"},
+        {"drawdown": -0.15, "buy_pct": 0.12, "asset": "x2"},
+        {"drawdown": -0.20, "buy_pct": 0.20, "asset": "x2"},
+        {"drawdown": -0.25, "buy_pct": 0.10, "asset": "x3"},
+        {"drawdown": -0.30, "buy_pct": 0.20, "asset": "x3"},
+        {"drawdown": -0.35, "buy_pct": 0.30, "asset": "x3"},
+        {"drawdown": -0.40, "buy_pct": 0.40, "asset": "x3"},
+        {"drawdown": -0.50, "buy_pct": 0.50, "asset": "x3"},
+        {"drawdown": -0.60, "buy_pct": 0.60, "asset": "x3"},
+        {"drawdown": -0.70, "buy_pct": 0.70, "asset": "x3"},
+        {"drawdown": -0.80, "buy_pct": 0.80, "asset": "x3"}
+    ])
+    default_thresholds_df = pd.DataFrame([
+        {"drawdown": -0.10, "buy_pct": 0.05, "asset": "x2"},
+        {"drawdown": -0.15, "buy_pct": 0.15, "asset": "x2"},
+        {"drawdown": -0.20, "buy_pct": 0.30, "asset": "x2"},
+        {"drawdown": -0.30, "buy_pct": 0.10, "asset": "x3"},
+        {"drawdown": -0.40, "buy_pct": 0.30, "asset": "x3"},
+        {"drawdown": -0.50, "buy_pct": 0.50, "asset": "x3"},
+        {"drawdown": -0.60, "buy_pct": 0.70, "asset": "x3"},
+    ])
+    thresholds_df = st.data_editor(
+        default_thresholds_df,
+        num_rows="dynamic",
+        width='stretch',
+        column_config={
+            "drawdown": st.column_config.NumberColumn(
+                "Drawdown",
+                help="Negative value, e.g. -0.2 = -20%",
+                format="%.2f",
+            ),
+            "buy_pct": st.column_config.NumberColumn(
+                "% of total to buy",
+                help="Fraction of initial capital (0.1 = 10%)",
+                format="%.2f",
+            ),
+            "asset": st.column_config.SelectboxColumn(
+                "Asset",
+                options=["x1", "x2", "x3"],
+            ),
+        },
+    )
+    return thresholds_df_to_dict(thresholds_df)
+
+
+def create_yields_input(entry_thresholds):
+    assets = sorted({asset for _, asset in entry_thresholds.values()})
+    yield_targets = {}
+    yield_values = {}
+    for asset in assets:
+        with st.container():
+            c1, c2 = st.columns([1, 2])
+
+            with c1:
+                target_type = st.selectbox(
+                    f"{asset} – Yield target type",
+                    options=["num", "auto", "none"],
+                    key=f"yield_type_{asset}",
+                    format_func=lambda k: {
+                        "num": "Numerical value",
+                        "auto": "Automatic yield based on current drawdown",
+                        "none": "No yield target (only accumulate)",
+                    }[k]
+                )
+
+            yield_targets[asset] = target_type
+
+            if target_type == "num":
+                with c2:
+                    value = st.number_input(
+                        f"{asset} – Yield value",
+                        min_value=0.0,
+                        step=0.01,
+                        value=0.5,
+                        key=f"yield_value_{asset}",
+                    )
+                yield_values[asset] = value
+            else:
+                yield_values[asset] = None
+
+    return yield_targets, yield_values
+
+
+def render_backtest_result(input_dfs, start_day, end_day, initial_capital, result):
+    x1 = input_dfs["x1"]
+    x1_filtered = x1[(x1['Days'] >= start_day) & (x1['Days'] <= end_day)].copy()
     translated_ops = translate_operation_days_to_dates(st.session_state["df"], result)
-    fig = plot_backtest(x1_filtered, df_x2, df_x3, translated_ops)
-    st.plotly_chart(fig, width='content')
+    #left_col, right_col = st.columns([3, 1])
+
+    fig = plot_backtest(x1_filtered, input_dfs["x2"], input_dfs["x3"], translated_ops)
+    st.plotly_chart(fig, width='stretch')
+
+    st.markdown("### Analysis of results")
+    x1_invested = result["x1"].get_invested_eur()
+    x1_value = result["x1"].get_invested_value()
+    x2_invested = result["x2"].get_invested_eur()
+    x2_value = result["x2"].get_invested_value()
+    x3_invested = result["x3"].get_invested_eur()
+    x3_value = result["x3"].get_invested_value()
+    assets = [("x1", x1_invested, x1_value), ("x2", x2_invested, x2_value), ("x3", x3_invested, x3_value)]
+
+    cash = result["cash"]
+    invested_value = x1_value + x2_value + x3_value
+    total_value = cash + invested_value
+
+    # Compute base scenario
+    first_price = x1.loc[x1['Date'].idxmin(), 'Adj Close']
+    last_price = x1.loc[x1['Date'].idxmax(), 'Adj Close']
+    expected_value = initial_capital * last_price / first_price
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Cash", f"{cash:,.2f} €")
+    c2.metric("Assets value", f"{invested_value:,.2f} €")
+    c3.metric("Total value", f"{total_value:,.2f} €")
+    c4.metric("Base scenario", f"{expected_value:,.2f} €")
+
+    fig = plot_wallet_chart(assets)
+    st.plotly_chart(fig, width='stretch')
+
+
+def update_data(start_date, end_date, df):
+    _data = {}
+    _updated = False
+    start_dt, end_dt = pd.to_datetime(start_date), pd.to_datetime(end_date)
+    if end_dt < start_dt:
+        st.error("End date must be later than the start date")
+        st.stop()
+
+    if st.session_state.get('data_params', ()) != (start_date, end_date):
+        _data["x1"] = df[(df['Date'] >= start_dt) & (df['Date'] <= end_dt)].copy()
+        _data["x2"] = _leverage_dataset(_data["x1"], L=2, knockout_zero=True)
+        _data["x3"] = _leverage_dataset(_data["x1"], L=3, knockout_zero=True)
+        _updated = True
+        st.session_state.backtest_data = _data
+        st.session_state.data_params = (start_date, end_date)
+    else:
+        _data = st.session_state.backtest_data
+
+    return _updated, _data
 
 
 def run():
@@ -30,39 +184,38 @@ def run():
     initial_capital = st.number_input("Initial capital", 1_000, 1_000_000, 10_000)
     start_date = st.date_input("Start date", value=date(2020, 1, 1), min_value=date(1900, 1, 1))
     end_date = st.date_input("End date", value="today", min_value=date(1900, 1, 1))
-    # strategy = st.selectbox("Investment strategy", options=["thresholds"])
+    strategy_key = st.selectbox(
+        "Investment strategy",
+        options=list(STRATEGY_BUILDERS.keys()),
+        format_func=lambda k: {
+            "thresholds": "Threshold-based buys + Yield-based sales",
+        }[k],
+    )
+    rotate = st.toggle("Rotate between leverage factors", value=False)
+    entry_thresholds = create_entry_thresholds_input()
+    yield_targets, yield_values = create_yields_input(entry_thresholds)
 
-    params = (initial_capital, start_date, end_date)
+    # Check if data has been updated
+    updated_data, input_dfs = update_data(start_date, end_date, df)
 
-    if st.session_state.get('backtest_params', ()) != params:
-        filtered = df[(df['Date'] >= pd.to_datetime(start_date)) & (df['Date'] <= pd.to_datetime(end_date))].copy()
-        lev_df_x2 = _leverage_dataset(filtered, L=2, knockout_zero=True)
-        lev_df_x3 = _leverage_dataset(filtered, L=3, knockout_zero=True)
-        st.session_state.backtest_data = {
-            "x1": filtered,
-            "x2": lev_df_x2,
-            "x3": lev_df_x3
-        }
-    else:
-        filtered = st.session_state.get("backtest_data", {}).get("x1", None)
-        lev_df_x2 = st.session_state.get("backtest_data", {}).get("x2", None)
-        lev_df_x3 = st.session_state.get("backtest_data", {}).get("x3", None)
+    # Check if strategy has been updated
+    strategy_params = (initial_capital, strategy_key, entry_thresholds, rotate, yield_targets, yield_values)
+    updated_strategy = st.session_state.get('strategy_params', ()) != strategy_params
 
     run = st.button("▶ Run backtest")
     # Run backtest if button is pressed and parameters have changed
-    if run and st.session_state.get('backtest_params', ()) != params:
+    if run and (updated_data or updated_strategy):
         with st.spinner("Doing a really hard work to backtest your strategy..."):
-            st.session_state.backtest_result = thresholds.backtest(filtered, lev_df_x2, lev_df_x3, initial_capital)
-            st.session_state.backtest_params = params
+            if updated_strategy:
+                strategy = STRATEGY_BUILDERS[strategy_key](initial_capital, entry_thresholds, input_dfs, rotate, yield_targets, yield_values)
+                st.session_state.backtest_strategy = strategy
+            else:
+                strategy = st.session_state.get("backtest_strategy", None)
+            st.session_state.backtest_result = strategy.backtest()
 
     # Show results
     if st.session_state.get("backtest_result", None) is not None:
-        start_day, end_day = _show_day_range_slider(filtered)
-        render_backtest_result(filtered, lev_df_x2, lev_df_x3, start_day, end_day, st.session_state.backtest_result)
+        start_day, end_day = _show_day_range_slider(input_dfs["x1"])
+        render_backtest_result(input_dfs, start_day, end_day, initial_capital, st.session_state.backtest_result)
     else:
         st.info("Run backtest to see results")
-
-    #with st.spinner("Doing a really hard work to backtest your strategy..."):
-    #    st.info("START BACKTEST")
-    #    time.sleep(5)
-    #    st.info("END BACKTEST")

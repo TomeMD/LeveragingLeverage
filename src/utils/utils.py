@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import os
+
 
 def _add_available_plot(title):
     if 'available_plots' not in st.session_state:
@@ -10,10 +12,34 @@ def _add_available_plot(title):
 def _set_df_loaded():
     st.session_state['df_loaded'] = True
 
-def _clear_data():
+
+def _reset_session():
     for k in ['df', 'leveraged_df', 'df_loaded', 'leveraged_created', 'available_plots']:
         if k in st.session_state:
             del st.session_state[k]
+
+
+def _clear_logs():
+    project_dir = st.session_state['PROJECT_DIR']
+    logs_dir = f"{project_dir}/logs/"
+    # Clear logs
+    for f in os.listdir(f"{logs_dir}/"):
+        if os.path.isfile(f"{logs_dir}/{f}"):
+            os.remove(f"{logs_dir}/{f}")
+
+
+def _clear_data():
+    project_dir = st.session_state['PROJECT_DIR']
+    data_dir = f"{project_dir}/data/"
+    # Clear data
+    for f in os.listdir(f"{data_dir}/"):
+        if os.path.isfile(f"{data_dir}/{f}"):
+            os.remove(f"{data_dir}/{f}")
+
+
+def _clear_data_and_logs():
+    _clear_data()
+    _clear_logs()
 
 
 def _show_day_range_slider(df):
