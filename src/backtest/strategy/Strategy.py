@@ -4,16 +4,16 @@ class Strategy:
 
     """Base class for all strategies."""
 
-    def __init__(self, name, total_eur, input_dfs):
+    def __init__(self, name, initial_capital, input_dfs):
         self.name = name
-        self.total_eur = total_eur
+        self.initial_capital = initial_capital
         self.input_dfs = input_dfs
         self.lev_factors = sorted(list(input_dfs.keys()))
 
-    def set_total_eur(self, value):
+    def set_initial_capital(self, value):
         if value < 0:
             raise ValueError(f"Trying to set an initial capital lower than 0 ({value}) for strategy {self.name}")
-        self.total_eur = value
+        self.initial_capital = value
 
     def get_prev_factor(self, lev_factor):
         return self.lev_factors[max(0, self.lev_factors.index(lev_factor) - 1)]

@@ -9,14 +9,16 @@ from src.backtest.strategy.Wallet import Wallet
 
 class ThresholdsStrategy(Strategy):
 
-    def __init__(self, total_eur, entry_thresholds, input_dfs, rotate, yield_targets, yield_values):
-        super().__init__("Thresholds", total_eur, input_dfs)
+    def __init__(self, initial_capital, entry_thresholds, input_dfs, rotate, yield_targets, yield_values, debt_yield):
+        super().__init__("Thresholds", initial_capital, input_dfs)
         self.entry_thresholds = entry_thresholds
         self.rotate = rotate
+        self.assets = sorted({asset for _, asset in entry_thresholds.values()})
         self.yield_targets = yield_targets
         self.yield_values = yield_values
+        self.debt_yield = debt_yield
         self.max_pcts = {}
-        for dd, (buy_pct, buy_type) in self.entry_thresholds.items():
+        for buy_pct, buy_type in self.entry_thresholds.values():
             if buy_type not in self.max_pcts:
                 self.max_pcts[buy_type] = buy_pct
             if buy_pct > self.max_pcts[buy_type]:
@@ -32,8 +34,8 @@ class ThresholdsStrategy(Strategy):
         buy_amounts = {}
         for pct, (buy_pct, buy_type) in self.entry_thresholds.items():
             if pct > dd:
-                max_eur = self.max_pcts[buy_type] * self.total_eur
-                buy_amounts[buy_type] = min(max(buy_amounts.get(buy_type, 0), buy_pct * self.total_eur), max_eur)
+                max_eur = self.max_pcts[buy_type] * self.initial_capital
+                buy_amounts[buy_type] = min(max(buy_amounts.get(buy_type, 0), buy_pct * self.initial_capital), max_eur)
             else:
                 break
 
@@ -48,22 +50,30 @@ class ThresholdsStrategy(Strategy):
             if interactive:
                 print(f"SELL IN PROCESS @amount {buy['amount']}")
                 _ = input("Enter to see result: ")
-
-            prev_factor = self.get_prev_factor(lev_factor)
-            prev_asset = wallet.get_asset(prev_factor)
+            # Update index taking into account previous sells
             updated_idx = i - sells_counter
-            amount = asset.sell_by_index(updated_idx, t)  # Sell shares from current lev factor
+            # Sell the buy that has reached its yield target (by index)
+            amount, fees = asset.sell_by_index(updated_idx, t)  # Sell shares from current lev factor
+            wallet.pay_fees(fees)
+            # Update the counter of performed sells
             sells_counter += 1
+            # Look if the amount retrieved can be rotated to previous leverage factors
+            prev_factor = self.get_prev_factor(lev_factor)
             # If there is a previous leverage factor and asset rotation is activated
-            if prev_factor != "x1" and self.rotate:
-                prev_asset.rotate_buy(asset.get_ticker(), amount, t, current_dd)
+            if prev_factor in self.assets and prev_factor != lev_factor and self.rotate:
+                prev_asset = wallet.get_asset(prev_factor)
+                fees = prev_asset.rotate_buy(asset.get_ticker(), amount, t, current_dd)
+                wallet.pay_fees(fees)
                 wallet.track_rotate(f"{lev_factor} to {prev_factor}", current_day)
             # Otherwise, sell asset and accumulate cash or not leveraged ETF shares (x1)
             else:
-                if wallet.cash + amount > self.total_eur:
-                    earnings = wallet.cash + amount - self.total_eur
-                    prev_asset.rotate_buy(asset.get_ticker(), earnings, t, current_dd)  # Invest earnings in x1
-                    wallet.fill(self.total_eur)
+                if wallet.cash + amount > self.initial_capital:
+                    earnings = wallet.cash + amount - self.initial_capital
+                    prev_asset = wallet.get_asset("x1_save")
+                    fees = prev_asset.rotate_buy(asset.get_ticker(), earnings, t, current_dd)  # Invest earnings in x1
+                    wallet.track_buy("x1_save", current_day)
+                    wallet.fill(self.initial_capital)
+                    wallet.pay_fees(fees)
                 else:
                     wallet.receive(amount)
                 wallet.track_sell(lev_factor, current_day)
@@ -79,28 +89,29 @@ class ThresholdsStrategy(Strategy):
                     print(f"BUY IN PROCESS @amount {amount_to_invest}")
                     _ = input("Enter to see result: ")
 
-                if self.rotate:
-                    # FIRST, TRY TO ROTATE
-                    prev_factor = self.get_prev_factor(lev_factor)
-                    if prev_factor != "x1":
-                        prev_asset = wallet.get_asset(prev_factor)
-                        extra_cash = 0.0 if not prev_asset else prev_asset.get_extra_cash(t)
-                        if extra_cash > 0.0:
-                            amount_to_rotate = min(amount_to_invest, extra_cash)
-                            prev_asset.rotate_down_sell(asset.get_ticker(), amount_to_rotate, t)
-                            asset.rotate_buy(prev_asset.get_ticker(), amount_to_rotate, t, current_dd)
-                            amount_to_invest -= amount_to_rotate
-                            wallet.track_rotate(f"{prev_factor} to {lev_factor}", current_day)
+                # FIRST, TRY TO ROTATE
+                prev_factor = self.get_prev_factor(lev_factor)
+                if prev_factor in self.assets and prev_factor != lev_factor and self.rotate:
+                    prev_asset = wallet.get_asset(prev_factor)
+                    extra_cash = 0.0 if not prev_asset else prev_asset.get_extra_cash(t)
+                    if extra_cash > 0.0:
+                        amount_to_rotate = min(amount_to_invest, extra_cash)
+                        sell_fees = prev_asset.sell_amount(amount_to_rotate, t, asset.get_ticker())
+                        buy_fees = asset.rotate_buy(prev_asset.get_ticker(), amount_to_rotate, t, current_dd)
+                        amount_to_invest -= amount_to_rotate
+                        wallet.track_rotate(f"{prev_factor} to {lev_factor}", current_day)
+                        wallet.pay_fees(sell_fees + buy_fees)
 
                 # BUY WITH CASH
                 amount_to_invest = min(amount_to_invest, wallet.cash)
                 if amount_to_invest > 0.0:
-                    asset.buy(amount_to_invest, t, current_dd)
+                    fees = asset.buy(amount_to_invest, t, current_dd)
                     wallet.spend(amount_to_invest)
+                    wallet.pay_fees(fees)
                     wallet.track_buy(lev_factor, current_day)
 
     def sell_or_rotate(self, wallet, t, current_dd, current_day, interactive=False):
-        for lev_factor in ["x2", "x3"]:
+        for lev_factor in self.assets:
             # Get asset from wallet
             asset = wallet.get_asset(lev_factor)
 
@@ -110,6 +121,18 @@ class ThresholdsStrategy(Strategy):
             # Execute sells
             self.execute_sells(wallet, asset, lev_factor, buys_ready, t, current_dd, current_day, interactive)
 
+    def compute_debt_costs(self, wallet):
+        owed_money = self.initial_capital - wallet.cash
+        if owed_money > 0.0:
+            wallet.track_debt_time(1)  # +1 day with debt
+            if self.debt_yield > 0.0:
+                # In the mortgage agreement they use 360 to compute interest costs
+                daily_debt_cost = owed_money * self.debt_yield / 360
+                wallet.track_debt_cost(daily_debt_cost)
+
+        if wallet.get_total_value() < self.initial_capital:
+            wallet.track_time_under_water(1)  # +1 day under water
+
     def backtest(self, interactive=False):
         # Clean log file from previous backtests
         if os.path.exists(self.log_path):
@@ -118,24 +141,22 @@ class ThresholdsStrategy(Strategy):
         # Convert time series DataFrames into numpy arrays (more efficient)
         days = self.input_dfs["x1"]['Days'].to_numpy(dtype=np.int64)
         prices, ath, dd, dmax = self.compute_drawdowns(self.input_dfs["x1"])
-        prices_x2, ath_x2, dd_x2, dmax_x2 = self.compute_drawdowns(self.input_dfs["x2"])
-        prices_x3, ath_x3, dd_x3, dmax_x3 = self.compute_drawdowns(self.input_dfs["x3"])
+        prices_dict, ath_dict, dd_dict, dmax_dict = {}, {}, {}, {}
+        for asset in self.assets:
+            prices_dict[asset], ath_dict[asset], dd_dict[asset], dmax_dict[asset] = self.compute_drawdowns(self.input_dfs[asset])
 
         # Initialise wallet
-        wallet = Wallet(self.total_eur)
-        wallet.add_asset("x1", Asset("S&P500 x1", prices, -1,  "none", -1, self.log_path))
-        wallet.add_asset("x2", Asset("S&P500 x2", prices_x2, self.total_eur * self.max_pcts["x2"], self.yield_targets["x2"], self.yield_values["x2"], self.log_path))
-        wallet.add_asset("x3", Asset("S&P500 x3", prices_x3, self.total_eur * self.max_pcts["x3"], self.yield_targets["x3"], self.yield_values["x3"], self.log_path))
+        wallet = Wallet(self.initial_capital)
+        wallet.add_asset("x1_save", Asset("S&P500 x1", prices, -1,  "none", -1, self.log_path))
+        for asset in self.assets:
+            wallet.add_asset(asset, Asset(f"S&P500 {asset}", prices_dict[asset], self.initial_capital * self.max_pcts[asset], self.yield_targets[asset], self.yield_values[asset], self.log_path))
 
         # Compute prices, ath, drawdowns and max drawdowns along the whole dataset
         for t in range(len(prices)):
-            current_price = {"x1": prices[t], "x2": prices_x2[t], "x3": prices_x3[t]}
-            current_dd = dd[t]
-            current_dmax = dmax[t]
-            current_day = days[t]
+            current_dd, current_dmax, current_day = dd[t], dmax[t], days[t]
 
             if interactive:
-                st.info(f"@iteration {t}: @price: {current_price['x1']} @dd: {current_dd} @dmax: {current_dmax}")
+                st.info(f"@iteration {t}: @price: {prices[t]} @dd: {current_dd} @dmax: {current_dmax}")
                 st.info(f"@iteration {t}: @cash: {wallet.cash}")
 
             # BUY OR ROTATE
@@ -143,5 +164,8 @@ class ThresholdsStrategy(Strategy):
 
             # SELL OR ROTATE
             self.sell_or_rotate(wallet, t, current_dd, current_day, interactive)
+
+            # Add debt financial costs (daily interest rate)
+            self.compute_debt_costs(wallet)
 
         return wallet.to_dict()
