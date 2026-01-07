@@ -50,7 +50,7 @@ def _show_day_range_slider(df):
     return start_day, end_day
 
 
-def _leverage_dataset(_df, L=5, knockout_zero=True):
+def _leverage_dataset(_df, L=5, knockout_zero=True, ter_annual=0.0075, trading_days=252):
     # Get prices from original dataset as a Pandas Series
     prices = pd.Series(_df["Adj Close"])
     # Create new Series with the price percentage change (daily returns)
@@ -59,6 +59,11 @@ def _leverage_dataset(_df, L=5, knockout_zero=True):
     leveraged_daily_returns = L * daily_returns
     # Add base 1 to make compounding effect
     factor = 1 + leveraged_daily_returns
+
+    # Apply daily TER cost
+    if ter_annual > 0:
+        daily_fee = 1 - ter_annual / trading_days
+        factor *= daily_fee
 
     if knockout_zero:
         # Look for negative returns and limit them to zero
