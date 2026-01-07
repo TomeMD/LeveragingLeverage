@@ -3,6 +3,7 @@ import os
 from src.sidebar import sidebar
 from src.dashboard import dashboard
 from src.backtest import backtest
+from src.evaluation import evaluation
 
 st.session_state['PROJECT_DIR'] = os.path.realpath(os.path.dirname(os.path.dirname(__file__)))
 
@@ -48,7 +49,7 @@ div[role="radio"][aria-checked="true"] {
 # Load page selector
 page = st.radio(
     "Navigation",
-    ["📊 Dashboard", "🧪 Backtest", "ℹ️ Dataset Info", "⚙️ Settings"],
+    ["📊 Dashboard", "🧪 Backtest", "🧠 Evaluation", "ℹ️ Dataset Info", "⚙️ Settings"],
     horizontal=True,
     key="page",
     label_visibility="collapsed",
@@ -63,6 +64,9 @@ if page == "📊 Dashboard":
 
 elif page == "🧪 Backtest":
     backtest.run()
+
+elif page == "🧠 Evaluation":
+    evaluation.run()
 
 elif page == "ℹ️ Dataset Info":
     st.info("Dataset info is not yet implemented")
