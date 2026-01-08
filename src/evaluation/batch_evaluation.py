@@ -81,6 +81,7 @@ def evaluate_threshold_config(strategy_builder, df, periods, config_values) -> p
     # Dynamic values
     entry_thresholds = config_values["thresholds"]
     rotate = config_values["rotate"]
+    risk_control = config_values["risk_control"]
     yield_targets = config_values["yield_targets"]
     yield_values = config_values["yield_values"]
 
@@ -92,7 +93,7 @@ def evaluate_threshold_config(strategy_builder, df, periods, config_values) -> p
         input_data = get_input_data(assets, df, start_dt, end_dt)
 
         # Initialise strategy
-        strategy = strategy_builder(INITIAL_CAPITAL, entry_thresholds, input_data, rotate, yield_targets, yield_values, DEBT_YIELD)
+        strategy = strategy_builder(INITIAL_CAPITAL, entry_thresholds, input_data, rotate, risk_control, yield_targets, yield_values, DEBT_YIELD)
 
         # Backtest strategy and retrieve results
         metrics = retrieve_backtest_results(strategy, input_data)

@@ -107,22 +107,22 @@ def plot_backtest(df, df_x2, df_x3, operations, date_col="Date"):
     x2_buys = [(name, day) for (name, day) in operations["buy_tracker"] if "x2" in name]
     x3_buys = [(name, day) for (name, day) in operations["buy_tracker"] if "x3" in name]
     add_operations_trace(fig, merged, "x1", x1_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=True)
-    add_operations_trace(fig, merged, "x2", x2_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=False)
-    add_operations_trace(fig, merged, "x3", x3_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=False)
+    add_operations_trace(fig, merged, "x2", x2_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=(not x1_buys))
+    add_operations_trace(fig, merged, "x3", x3_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=(not x2_buys))
 
     x1_rotations = [(name, day) for (name, day) in operations["rotate_tracker"] if "x1" == name]
     x2_rotations = [(name, day) for (name, day) in operations["rotate_tracker"] if "x2" in name]
     x3_rotations = [(name, day) for (name, day) in operations["rotate_tracker"] if "x3" in name]
     add_operations_trace(fig, merged, "x1", x1_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=True)
-    add_operations_trace(fig, merged, "x2", x2_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=False)
-    add_operations_trace(fig, merged, "x3", x3_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=False)
+    add_operations_trace(fig, merged, "x2", x2_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=(not x1_buys))
+    add_operations_trace(fig, merged, "x3", x3_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=(not x2_buys))
 
     x1_sells = [(name, day) for (name, day) in operations["sell_tracker"] if "x1" == name]
     x2_sells = [(name, day) for (name, day) in operations["sell_tracker"] if "x2" in name]
     x3_sells = [(name, day) for (name, day) in operations["sell_tracker"] if "x3" in name]
     add_operations_trace(fig, merged, "x1", x1_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=True)
-    add_operations_trace(fig, merged, "x2", x2_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=False)
-    add_operations_trace(fig, merged, "x3", x3_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=False)
+    add_operations_trace(fig, merged, "x2", x2_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=(not x1_buys))
+    add_operations_trace(fig, merged, "x3", x3_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=(not x2_buys))
 
     fig.update_layout(xaxis_title=date_col, yaxis_title="Value", height=500, template="plotly_white")
 

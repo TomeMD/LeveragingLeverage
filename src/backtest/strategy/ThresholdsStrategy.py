@@ -9,7 +9,7 @@ from src.backtest.strategy.Wallet import Wallet
 
 class ThresholdsStrategy(Strategy):
 
-    def __init__(self, initial_capital, entry_thresholds, input_dfs, rotate, yield_targets, yield_values, debt_yield):
+    def __init__(self, initial_capital, entry_thresholds, input_dfs, rotate, risk_control, yield_targets, yield_values, debt_yield):
         super().__init__("Thresholds", initial_capital, input_dfs)
         self.entry_thresholds = entry_thresholds
         self.rotate = rotate
@@ -18,6 +18,12 @@ class ThresholdsStrategy(Strategy):
         self.yield_values = yield_values
         self.debt_yield = debt_yield
         self.max_pcts = {}
+        self.market_state = "NORMAL"
+        self.risk_control = risk_control
+        self.change_counter = 0
+        self.pause_x3 = False
+        self.min_dd_seen = 0.0
+
         for buy_pct, buy_type in self.entry_thresholds.values():
             if buy_type not in self.max_pcts:
                 self.max_pcts[buy_type] = buy_pct
@@ -29,11 +35,73 @@ class ThresholdsStrategy(Strategy):
             os.mkdir("logs")
         self.log_path = f"logs/thresholds.log"
 
+    def has_higher_low(self, prices, t, lookback=120):
+        if t < lookback + 2:
+            return False
+
+        # Check from t - (lookback + 1) to t, we use (lookback +1) to check an earlier minimum
+        window = prices[t-(lookback+1):(t+1)]
+
+        # Create arrays shifted +1 and -1 position
+        prev = window[:-2]
+        curr = window[1:-1]
+        next_ = window[2:]
+
+        # Take all the values t that are lower than then previous (t-1) and next (t+1) values (local minimum)
+        local_min_mask = (curr < prev) & (curr < next_)
+        local_mins = curr[local_min_mask]
+
+        if len(local_mins) < 2:
+            return False
+
+        # Check if the last minimum t is higher than the previous one t-1, indicating the trend may have changed
+        return local_mins[-1] > local_mins[-2]
+
+    def update_market_state(self, dd, prices, t):
+        # Crisis is about to start
+        if self.market_state == "NORMAL" and dd <= -0.10:
+            self.market_state = "CRISIS"
+            self.min_dd_seen = dd
+
+        # Inside crisis
+        elif self.market_state in ("CRISIS", "RECOVERY"):
+            self.min_dd_seen = min(self.min_dd_seen, dd)
+
+        # Recovering from crisis
+        if self.market_state == "CRISIS" and self.has_higher_low(prices, t):
+            self.market_state = "RECOVERY"
+
+        # Come back to normal state
+        if self.market_state == "RECOVERY" and dd > -0.15:
+            self.market_state = "NORMAL"
+            self.min_dd_seen = 0.0
+
+    def update_x3_pause_state(self, dd, prices, t):
+        #self.update_market_state(dd, prices, t)
+        self.min_dd_seen = min(self.min_dd_seen, dd)
+        price = prices[t]
+        ma200 = prices[max(0, t-200):t+1].mean()
+
+        pause_condition = (dd <= -0.35 and price < ma200 and not self.has_higher_low(prices, t))
+
+        resume_condition = (price > ma200 and (dd - self.min_dd_seen) >= 0.10 and self.has_higher_low(prices, t))
+
+        if not self.pause_x3 and pause_condition:
+            self.change_counter += 1
+            self.pause_x3 = True
+
+        if self.pause_x3 and resume_condition:
+            self.change_counter += 1
+            self.min_dd_seen = 0.0  # Reset min_dd_seen as a recovery is considered
+            self.pause_x3 = False
+
     def get_amounts_to_buy(self, dd):
         # Get the percentage of total capital that should be invested in each type of asset for current drawdown
         buy_amounts = {}
         for pct, (buy_pct, buy_type) in self.entry_thresholds.items():
             if pct > dd:
+                if buy_type == "x3" and self.pause_x3:
+                    continue
                 max_eur = self.max_pcts[buy_type] * self.initial_capital
                 buy_amounts[buy_type] = min(max(buy_amounts.get(buy_type, 0), buy_pct * self.initial_capital), max_eur)
             else:
@@ -158,6 +226,10 @@ class ThresholdsStrategy(Strategy):
             if interactive:
                 st.info(f"@iteration {t}: @price: {prices[t]} @dd: {current_dd} @dmax: {current_dmax}")
                 st.info(f"@iteration {t}: @cash: {wallet.cash}")
+
+            # Update x3 pause logic (only needs x1 prices)
+            if self.risk_control:
+                self.update_x3_pause_state(current_dd, prices, t)
 
             # BUY OR ROTATE
             self.buy_or_rotate(wallet, t, current_dd, current_day, interactive)

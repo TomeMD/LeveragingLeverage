@@ -92,12 +92,16 @@ YIELD_TARGETS_SPACE = {
 }
 YIELD_VALUES_SPACE = [0.25, 0.5, 0.75, 1.0]  # only if yield_target == "num"
 ROTATE_SPACE = [True, False]
+RISK_CONTROL_SPACE = [True, False]
 
 
-def _is_valid_config(assets, yield_targets, yield_values, rotate):
+def _is_valid_config(assets, yield_targets, yield_values, rotate, risk_control):
+    # Rotations cannot be performed if there is only one asset
+    if rotate and len(assets) < 2:
+        return False
 
-    # Rotations are only supported between "x2" and "x3"
-    if rotate and "x3" not in assets and "x2" not in assets:
+    # Risk control pause "x3" investing
+    if risk_control and "x3" not in assets:
         return False
 
     # When yield target is "num" yield values must be a number between 0 and 1
@@ -114,7 +118,7 @@ def _is_valid_config(assets, yield_targets, yield_values, rotate):
     return True
 
 
-def _build_config_name(entry_name, yield_targets, yield_values, rotate):
+def _build_config_name(entry_name, yield_targets, yield_values, rotate, risk_control):
     parts = [f"T[{entry_name}]"]
 
     yt = []
@@ -125,7 +129,10 @@ def _build_config_name(entry_name, yield_targets, yield_values, rotate):
             yt.append(f"{a}:{t}")
 
     parts.append("Y[" + ",".join(sorted(yt)) + "]")
-    parts.append("R" if rotate else "NR")
+    if rotate:
+        parts.append("ROT")
+    if risk_control:
+        parts.append("RC")
 
     return " | ".join(parts)
 
@@ -161,18 +168,21 @@ def build_all_configurations():
                 # 3. Rotation
                 for rotate in ROTATE_SPACE:
 
-                    # Check if configuration is valid
-                    if not _is_valid_config(assets, yield_targets, yield_values, rotate):
-                        continue
+                    # 4. Risk control
+                    for risk_control in RISK_CONTROL_SPACE:
+                        # Check if configuration is valid
+                        if not _is_valid_config(assets, yield_targets, yield_values, rotate, risk_control):
+                            continue
 
-                    # Assign a descriptive name for config
-                    config_name = _build_config_name(et_name, yield_targets, yield_values, rotate)
+                        # Assign a descriptive name for config
+                        config_name = _build_config_name(et_name, yield_targets, yield_values, rotate, risk_control)
 
-                    all_configs[config_name] = {
-                        "thresholds": entry_thresholds,
-                        "yield_targets": yield_targets,
-                        "yield_values": yield_values,
-                        "rotate": rotate,
-                    }
+                        all_configs[config_name] = {
+                            "thresholds": entry_thresholds,
+                            "yield_targets": yield_targets,
+                            "yield_values": yield_values,
+                            "rotate": rotate,
+                            "risk_control": risk_control
+                        }
 
     return all_configs

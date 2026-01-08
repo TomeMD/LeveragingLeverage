@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date, datetime
+from datetime import date
 from src.utils.utils import _show_day_range_slider, _leverage_dataset
 from src.backtest.utils import plot_backtest, translate_operation_days_to_dates, plot_wallet_chart
 from src.backtest.strategy.builders import STRATEGY_BUILDERS
@@ -99,7 +99,7 @@ def create_yields_input(entry_thresholds):
 
 def render_backtest_result(start_day, end_day, strategy_params, input_dfs, result):
     # Unpack strategy parameters
-    initial_capital, strategy_key, entry_thresholds, rotate, yield_targets, yield_values, debt_yield = strategy_params
+    initial_capital, strategy_key, entry_thresholds, rotate, risk_control, yield_targets, yield_values, debt_yield = strategy_params
 
     # Translate operations tracked days to DataFrame dates, in order to plot them properly in the X-axis
     x1 = input_dfs["x1"]
@@ -183,13 +183,14 @@ def run():
     entry_thresholds = create_entry_thresholds_input()
     yield_targets, yield_values = create_yields_input(entry_thresholds)
     rotate = st.toggle("Rotate between leverage factors", value=False)
+    risk_control = st.toggle("Risk control", value=False)
     debt_yield = st.number_input("Debt yield", min_value=0.0000, max_value=1.0000, step=0.0001, value=0.0325, format="%0.4f")
 
     # Check if data has been updated
     updated_data, input_dfs = update_data(start_date, end_date, df)
 
     # Check if strategy has been updated
-    strategy_params = (initial_capital, strategy_key, entry_thresholds, rotate, yield_targets, yield_values, debt_yield)
+    strategy_params = (initial_capital, strategy_key, entry_thresholds, rotate, risk_control, yield_targets, yield_values, debt_yield)
     updated_strategy = st.session_state.get('strategy_params', ()) != strategy_params
 
     run = st.button("▶ Run backtest")
@@ -197,7 +198,7 @@ def run():
     if run and (updated_data or updated_strategy):
         with st.spinner("Doing a really hard work to backtest your strategy..."):
             if updated_strategy:
-                strategy = STRATEGY_BUILDERS[strategy_key](initial_capital, entry_thresholds, input_dfs, rotate, yield_targets, yield_values, debt_yield)
+                strategy = STRATEGY_BUILDERS[strategy_key](initial_capital, entry_thresholds, input_dfs, rotate, risk_control, yield_targets, yield_values, debt_yield)
                 st.session_state.backtest_strategy = strategy
             else:
                 strategy = st.session_state.get("backtest_strategy", None)
