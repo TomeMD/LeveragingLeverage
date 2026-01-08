@@ -87,43 +87,40 @@ def plot_backtest(df, df_x2, df_x3, operations, date_col="Date"):
     d3 = df_x3[[date_col, "Adj Close"]].rename(columns={"Adj Close": "x3"})
     merged = d1.merge(d2, on=date_col).merge(d3, on=date_col).sort_values(date_col).reset_index(drop=True)
 
-    # operations structure:
-    # {
-    #   "buy_tracker": [(name, <date-1>), ..., (name, <date-n>)],
-    #   "rotate_tracker": [(name, <date-1>), ..., (name, <date-n>)],
-    #   "sell_tracker": [(name, <date-1>), ..., (name, <date-n>)]
-    # }
+    base = merged.iloc[0]  # Initial value for each asset
+    for col in ["x1", "x2", "x3"]:
+        merged[f"{col}_norm"] = merged[col] / base[col] * 100
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=merged[date_col], y=merged["x1"], mode='lines', name='x1', line={"color": "#1f77b4"}))
-    fig.add_trace(go.Scatter(x=merged[date_col], y=merged["x2"], mode='lines', name='x2', line={"color": "#9467bd"}))
-    fig.add_trace(go.Scatter(x=merged[date_col], y=merged["x3"], mode='lines', name='x3', line={"color": "#7f7f7f"}))
+    fig.add_trace(go.Scatter(x=merged[date_col], y=merged["x1_norm"], mode='lines', name='x1', line={"color": "#1f77b4"}))
+    fig.add_trace(go.Scatter(x=merged[date_col], y=merged["x2_norm"], mode='lines', name='x2', line={"color": "#9467bd"}))
+    fig.add_trace(go.Scatter(x=merged[date_col], y=merged["x3_norm"], mode='lines', name='x3', line={"color": "#7f7f7f"}))
 
     # Operations
     x1_save = [("x1", day) for (name, day) in operations["buy_tracker"] if "x1_save" in name]
-    add_operations_trace(fig, merged, "x1", x1_save, "#3498db", "Save", date_col, legendgroup="Save", showlegend=True)
+    add_operations_trace(fig, merged, "x1_norm", x1_save, "#3498db", "Save", date_col, legendgroup="Save", showlegend=True)
 
     x1_buys = [(name, day) for (name, day) in operations["buy_tracker"] if "x1" == name]
     x2_buys = [(name, day) for (name, day) in operations["buy_tracker"] if "x2" in name]
     x3_buys = [(name, day) for (name, day) in operations["buy_tracker"] if "x3" in name]
-    add_operations_trace(fig, merged, "x1", x1_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=True)
-    add_operations_trace(fig, merged, "x2", x2_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=(not x1_buys))
-    add_operations_trace(fig, merged, "x3", x3_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=(not x2_buys))
+    add_operations_trace(fig, merged, "x1_norm", x1_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=True)
+    add_operations_trace(fig, merged, "x2_norm", x2_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=(not x1_buys))
+    add_operations_trace(fig, merged, "x3_norm", x3_buys, "#2ecc71", "Buy", date_col, legendgroup="buy", showlegend=(not x2_buys))
 
     x1_rotations = [(name, day) for (name, day) in operations["rotate_tracker"] if "x1" == name]
     x2_rotations = [(name, day) for (name, day) in operations["rotate_tracker"] if "x2" in name]
     x3_rotations = [(name, day) for (name, day) in operations["rotate_tracker"] if "x3" in name]
-    add_operations_trace(fig, merged, "x1", x1_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=True)
-    add_operations_trace(fig, merged, "x2", x2_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=(not x1_buys))
-    add_operations_trace(fig, merged, "x3", x3_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=(not x2_buys))
+    add_operations_trace(fig, merged, "x1_norm", x1_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=True)
+    add_operations_trace(fig, merged, "x2_norm", x2_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=(not x1_buys))
+    add_operations_trace(fig, merged, "x3_norm", x3_rotations, "#f39c12", "Rotate", date_col, legendgroup="rotate", showlegend=(not x2_buys))
 
     x1_sells = [(name, day) for (name, day) in operations["sell_tracker"] if "x1" == name]
     x2_sells = [(name, day) for (name, day) in operations["sell_tracker"] if "x2" in name]
     x3_sells = [(name, day) for (name, day) in operations["sell_tracker"] if "x3" in name]
-    add_operations_trace(fig, merged, "x1", x1_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=True)
-    add_operations_trace(fig, merged, "x2", x2_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=(not x1_buys))
-    add_operations_trace(fig, merged, "x3", x3_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=(not x2_buys))
+    add_operations_trace(fig, merged, "x1_norm", x1_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=True)
+    add_operations_trace(fig, merged, "x2_norm", x2_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=(not x1_buys))
+    add_operations_trace(fig, merged, "x3_norm", x3_sells, "#e74c3c", "Sell", date_col, legendgroup="sell", showlegend=(not x2_buys))
 
-    fig.update_layout(xaxis_title=date_col, yaxis_title="Value", height=500, template="plotly_white")
+    fig.update_layout(xaxis_title=date_col, yaxis_title="Normalized Value (%)", height=500, template="plotly_white")
 
     return fig

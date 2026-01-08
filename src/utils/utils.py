@@ -75,7 +75,7 @@ def _leverage_dataset(_df, L=5, knockout_zero=True, ter_annual=0.0075, trading_d
         factor[zero_mask] = 0.0
 
     # Get initial price from original dataset
-    initial_nav = _df['Adj Close'].iloc[0]
+    initial_nav = 1.0  # _df['Adj Close'].iloc[0]
     # Accumulate all the performances starting on initial price (compound effect)
     nav = initial_nav * factor.cumprod()
 
