@@ -1,8 +1,9 @@
-import os
+from math import floor
+
 
 class Asset:
 
-    def __init__(self, ticker, prices, max_eur, yield_target, yield_value, log_file):
+    def __init__(self, ticker, prices, max_eur, yield_target, yield_value, log_file, allow_fractional=True, min_trade_value=5.0):
         self.ticker = ticker
         self.prices = prices
         self.max_eur = max_eur
@@ -13,11 +14,36 @@ class Asset:
         self.invested_qty = 0
         self.invested_value = 0
         self.buys = []
+        self.allow_fractional = allow_fractional
+        self.min_trade_value = float(min_trade_value)
+
+    def __log_and_print(self, msg):
+        with open(self.log_file, "a") as f:
+            f.write(f"{msg}\n")
+        #print(msg)
 
     def __get_yield_value(self, dd):
         if self.yield_target == "auto":
             return (1 / (1 + dd)) - 1  # Yield to recover 100% of current dropdown
         return self.yield_value
+
+    def __get_invested_value(self, t):
+        return self.invested_qty * self.prices[t]
+
+    def __get_buy(self, idx):
+        if idx >= len(self.buys):
+            raise IndexError(f"Index out of range when accessing {self.ticker} buys list: Index={idx} | Length={len(self.buys)}")
+        return self.buys[idx]
+
+    def __update_buy(self, idx, item):
+        if idx >= len(self.buys):
+            raise IndexError(f"Index out of range when accessing {self.ticker} buys list: Index={idx} | Length={len(self.buys)}")
+        self.buys[idx] = item
+
+    def __delete_buy(self, idx):
+        if idx >= len(self.buys):
+            raise IndexError(f"Index out of range when accessing {self.ticker} buys list: Index={idx} | Length={len(self.buys)}")
+        del self.buys[idx]
 
     def __create_buy(self, t, amount, fees, qty, dd):
         return {
@@ -32,11 +58,6 @@ class Asset:
             "invested_eur": self.invested_eur,
             "pending_until_max": max(self.max_eur - self.invested_eur, 0) if self.max_eur > 0 else -1
         }
-
-    def __log_and_print(self, msg):
-        with open(self.log_file, "a") as f:
-            f.write(f"{msg}\n")
-        #print(msg)
 
     def __print_buy(self, buy_item):
         self.__log_and_print("************************ BUY ************************")
@@ -83,6 +104,47 @@ class Asset:
         self.__log_and_print(f"{'Invested EUR (after sell)':<30}: {self.invested_eur:>10.2f}")
         self.__log_and_print("*****************************************************")
 
+    def __add_buy_item(self, amount_eur, fees, t, dd):
+        # Compute invested qty
+        qty = amount_eur / self.prices[t] if self.prices[t] > 0 else 0.0
+
+        # Update cummulative amounts
+        self.invested_eur += amount_eur
+        self.invested_qty += qty
+        self.invested_value = self.prices[t] * self.invested_qty
+
+        # Create and add buy
+        new_buy = self.__create_buy(t, amount_eur, fees, qty, dd)
+        self.buys.append(new_buy)
+        return new_buy
+
+    def __buy(self, amount_eur, t, dd):
+        price = self.prices[t]
+        if price <= 0:
+            self.__log_and_print(f"Price for {self.ticker} at {t} is non-positive. Skipping buy.")
+            return None
+
+        # Avoid micro-trades
+        if amount_eur < self.min_trade_value:
+            self.__log_and_print(f"Buy amount {amount_eur}€ for {self.ticker} under min_trade_value {self.min_trade_value}. Skipping.")
+            return None
+
+        # Adjust amount if fractional shares are not allowed
+        if not self.allow_fractional:
+            qty = int(floor(amount_eur / price))
+            if qty <= 0:
+                self.__log_and_print(f"Desired buy {amount_eur}€ for {self.ticker} too small to buy 1 share at price {price:.2f}. Skipping.")
+                return None
+            amount_eur = qty * price
+
+        # Compute fees (recomputed after rounding)
+        fees = self.compute_fees(amount_eur)
+
+        # Add buy
+        buy_item = self.__add_buy_item(amount_eur, fees, t, dd)
+
+        return buy_item
+
     @staticmethod
     def compute_fees(amount):
         return max(amount * 0.0012, 1.0)
@@ -111,110 +173,117 @@ class Asset:
         self.invested_value = self.invested_qty * self.prices[t]
         return max(self.invested_value - self.max_eur, 0)
 
-    def __add_buy(self, amount_eur, fees, t, dd):
-        # Compute invested qty
-        # TODO: Compute real amount because we cannot invest fractional amounts
-        qty = amount_eur / self.prices[t]
-
-        # Update cummulative amounts
-        self.invested_eur += amount_eur
-        self.invested_qty += qty
-        self.invested_value = self.prices[t] * self.invested_qty
-
-        # Create and add buy
-        self.buys.append(self.__create_buy(t, amount_eur, fees, qty, dd))
-
     # Buy shares using cash
-    def buy(self, amount_eur, t, dd):
+    def cash_buy(self, amount_eur, t, dd):
         # Check investment upper limit is not surpassed (max_eur should be >0, -1 means there is no limit)
         if 0 < self.max_eur < self.invested_eur + amount_eur:
             raise ValueError(f"Trying to buy more than {self.max_eur} of {self.ticker} using cash. Aborting...")
 
-        # Compute fees
-        fees = self.compute_fees(amount_eur)
-
         # Add buy
-        self.__add_buy(amount_eur, fees, t, dd)
+        buy_item = self.__buy(amount_eur, t, dd)
+        if buy_item is None:
+            return False, 0.0
 
         # Print buy info
         self.__log_and_print(f"Using cash to buy {amount_eur}€ of {self.ticker}")
-        self.__print_buy(self.buys[-1])
+        self.__print_buy(buy_item)
 
-        return fees
+        return True, buy_item['fees']
 
     # Buy shares by rotating from higher leverage factors
     def rotate_buy(self, from_ticker, amount_eur, t, dd):
-        # Compute fees
-        fees = self.compute_fees(amount_eur)
-
         # Add buy
-        self.__add_buy(amount_eur, fees, t, dd)
+        buy_item = self.__buy(amount_eur, t, dd)
+        if buy_item is None:
+            return False, 0.0
 
         # Print buy info
         self.__log_and_print(f"Rotating {amount_eur}€ from {from_ticker} to {self.ticker}")
-        self.__print_buy(self.buys[-1])
+        self.__print_buy(buy_item)
 
-        return fees
+        return True, buy_item['fees']
 
     # Sell shares to rotate to higher leverage factors
     def sell_amount(self, amount_eur, t, to_ticker=None):
-        if amount_eur > self.invested_value:
-            raise ValueError(f"Trying to sell {amount_eur} from {self.ticker} but current invested value is lower: {self.invested_value}")
+        if amount_eur > self.__get_invested_value(t):
+            raise ValueError(f"Trying to sell {amount_eur} from {self.ticker} but current invested value is lower: {self.__get_invested_value(t)}")
+
+        # Avoid micro-trades
+        if amount_eur < self.min_trade_value:
+            self.__log_and_print(f"Sell amount {amount_eur}€ for {self.ticker} under min_trade_value {self.min_trade_value}. Skipping.")
+
         pending_amount = amount_eur
         current_price = self.prices[t]
-        fees = self.compute_fees(amount_eur)  # Compute fees
+        total_fees = 0.0
         while pending_amount > 0.0:
+            # Exit condition, no more buys to sell
             if len(self.buys) == 0:
                 break
-            buy_item = self.buys[0] # FIFO
+
+            # Get the older buy first (FIFO)
+            buy_item = self.__get_buy(0)
             buy_value = current_price * buy_item['qty']
             sell_amount = min(buy_value, pending_amount)
-            sell_qty = sell_amount / current_price
+
+            # If fractional shares are not allowed, when the amount is smaller than 1 share price, the sell is finished
+            sell_qty = sell_amount / current_price if current_price > 0 else 0.0
+            if not self.allow_fractional:
+                sell_qty = int(floor(sell_qty))
+                if sell_qty <= 0:
+                    self.__log_and_print(f"Desired sell {sell_amount}€ for {self.ticker} too small to sell 1 "
+                                         f"share at price {current_price:.2f}. Skipping.")
+                    break
+                sell_amount = sell_qty * current_price
+
             final_yield = (current_price / buy_item['price']) - 1
 
-            self.invested_eur -= sell_qty * buy_item['price'] # We remove the value at the time of buying, not the current value
+            # Update quantities using buy price for invested_eur
+            self.invested_eur -= sell_qty * buy_item['price']
             self.invested_qty -= sell_qty
             self.invested_value = current_price * self.invested_qty
 
+            # Logging
             if to_ticker is None:
                 self.__log_and_print(f"Selling {sell_amount}€ from {self.ticker}")
             else:
                 self.__log_and_print(f"Rotating {sell_amount}€ from {self.ticker} to {to_ticker}")
+
+            # Update fees
             sell_fees = self.compute_fees(sell_amount)
+            total_fees += sell_fees
+
             if sell_amount >= buy_value:
+                # Full buy sold
                 self.__print_sell(buy_item, t, current_price, sell_amount, sell_fees, final_yield)
-                del self.buys[0]
+                self.__delete_buy(0)
             else:
+                # Partial sell
                 self.__log_and_print(f"Partial sell of {self.ticker} amount = {sell_amount}€ (shares value = {buy_value}€)")
                 self.__print_partial_sell(buy_item, t, current_price, sell_qty, sell_amount, sell_fees, final_yield)
-                self.buys[0]['qty'] -= sell_qty
-                self.buys[0]['amount'] = self.buys[0]['qty'] * self.buys[0]['price']
+                buy_item['qty'] -= sell_qty
+                buy_item['amount'] = buy_item['qty'] * buy_item['price']
+                self.__update_buy(0, buy_item)
 
             pending_amount -= sell_amount
 
-        return fees
+        return amount_eur - pending_amount, total_fees
 
     def sell_by_index(self, idx, t):
-        buy_item = self.buys[idx]
-        qty = buy_item['qty']
-        buy_price = buy_item['price']
+        buy_item = self.__get_buy(idx)
+        buy_qty, buy_price, buy_amount = buy_item['qty'], buy_item['price'], buy_item['amount']
         current_price = self.prices[t]
-        target_yield = buy_item['yield_value']
         final_yield = (current_price / buy_price) - 1
-        initial_amount = buy_item['amount']
-        final_amount = current_price * qty
-        buy_time = buy_item['index']
+        final_amount = current_price * buy_qty
 
-
-        self.invested_eur -= initial_amount
-        self.invested_qty -= qty
+        self.invested_eur -= buy_amount
+        self.invested_qty -= buy_qty
         self.invested_value = current_price * self.invested_qty
         fees = self.compute_fees(final_amount)  # Compute fees
 
-        self.__log_and_print(f"Selling {initial_amount}€ of {self.ticker} that has reached its yield target")
+        self.__log_and_print(f"Selling {buy_amount}€ of {self.ticker} that has reached its yield target")
         self.__print_sell(buy_item, t, current_price, final_amount, fees, final_yield)
 
-        del self.buys[idx]
+        self.__delete_buy(idx)
 
         return final_amount, fees
 

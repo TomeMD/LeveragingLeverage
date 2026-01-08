@@ -9,7 +9,7 @@ from src.backtest.strategy.Wallet import Wallet
 
 class ThresholdsStrategy(Strategy):
 
-    def __init__(self, initial_capital, entry_thresholds, input_dfs, rotate, risk_control, yield_targets, yield_values, debt_yield):
+    def __init__(self, initial_capital, entry_thresholds, input_dfs, rotate, risk_control, yield_targets, yield_values, debt_yield, allow_fractional=True):
         super().__init__("Thresholds", initial_capital, input_dfs)
         self.entry_thresholds = entry_thresholds
         self.rotate = rotate
@@ -23,6 +23,7 @@ class ThresholdsStrategy(Strategy):
         self.change_counter = 0
         self.pause_x3 = False
         self.min_dd_seen = 0.0
+        self.allow_fractional = allow_fractional
 
         for buy_pct, buy_type in self.entry_thresholds.values():
             if buy_type not in self.max_pcts:
@@ -118,33 +119,48 @@ class ThresholdsStrategy(Strategy):
             if interactive:
                 print(f"SELL IN PROCESS @amount {buy['amount']}")
                 _ = input("Enter to see result: ")
+
             # Update index taking into account previous sells
             updated_idx = i - sells_counter
+
             # Sell the buy that has reached its yield target (by index)
             amount, fees = asset.sell_by_index(updated_idx, t)  # Sell shares from current lev factor
             wallet.pay_fees(fees)
+
             # Update the counter of performed sells
             sells_counter += 1
+
             # Look if the amount retrieved can be rotated to previous leverage factors
             prev_factor = self.get_prev_factor(lev_factor)
+
             # If there is a previous leverage factor and asset rotation is activated
             if prev_factor in self.assets and prev_factor != lev_factor and self.rotate:
                 prev_asset = wallet.get_asset(prev_factor)
-                fees = prev_asset.rotate_buy(asset.get_ticker(), amount, t, current_dd)
-                wallet.pay_fees(fees)
-                wallet.track_rotate(f"{lev_factor} to {prev_factor}", current_day)
-            # Otherwise, sell asset and accumulate cash or not leveraged ETF shares (x1)
-            else:
-                if wallet.cash + amount > self.initial_capital:
-                    earnings = wallet.cash + amount - self.initial_capital
-                    prev_asset = wallet.get_asset("x1_save")
-                    fees = prev_asset.rotate_buy(asset.get_ticker(), earnings, t, current_dd)  # Invest earnings in x1
-                    wallet.track_buy("x1_save", current_day)
-                    wallet.fill(self.initial_capital)
+                success, fees = prev_asset.rotate_buy(asset.get_ticker(), amount, t, current_dd)
+                if success:
                     wallet.pay_fees(fees)
+                    wallet.track_rotate(f"{lev_factor} to {prev_factor}", current_day)
                 else:
                     wallet.receive(amount)
+                    wallet.track_sell(lev_factor, current_day)
+
+            # Otherwise, sell asset and accumulate cash or not leveraged ETF shares (x1)
+            else:
+                # Save cash until the initial capital is recovered
+                new_cash = min(amount, max(self.initial_capital - wallet.cash, 0.0))
+                earnings = amount - new_cash
+                wallet.receive(new_cash)
                 wallet.track_sell(lev_factor, current_day)
+                # The remaining amount is considered as "earnings" and will be invested in x1 ETF if possible
+                if earnings > 0.0:
+                    prev_asset = wallet.get_asset("x1_save")
+                    success, fees = prev_asset.rotate_buy(asset.get_ticker(), earnings, t, current_dd)
+                    if success:
+                        wallet.track_buy(f"x1_save", current_day)
+                        wallet.pay_fees(fees)
+                    else:
+                        wallet.receive(amount)  # If the buy does not succeed put also in cash
+                        wallet.track_sell(lev_factor, current_day)
 
     def buy_or_rotate(self, wallet, t, current_dd, current_day, interactive=False):
         target_investment_by_asset = self.get_amounts_to_buy(current_dd)
@@ -164,19 +180,23 @@ class ThresholdsStrategy(Strategy):
                     extra_cash = 0.0 if not prev_asset else prev_asset.get_extra_cash(t)
                     if extra_cash > 0.0:
                         amount_to_rotate = min(amount_to_invest, extra_cash)
-                        sell_fees = prev_asset.sell_amount(amount_to_rotate, t, asset.get_ticker())
-                        buy_fees = asset.rotate_buy(prev_asset.get_ticker(), amount_to_rotate, t, current_dd)
-                        amount_to_invest -= amount_to_rotate
+                        amount_rotated, sell_fees = prev_asset.sell_amount(amount_to_rotate, t, asset.get_ticker())
+                        success, buy_fees = False, 0.0
+                        if amount_rotated > 0.0:
+                            success, buy_fees = asset.rotate_buy(prev_asset.get_ticker(), amount_to_rotate, t, current_dd)
+                        if success:
+                            amount_to_invest -= amount_rotated
                         wallet.track_rotate(f"{prev_factor} to {lev_factor}", current_day)
                         wallet.pay_fees(sell_fees + buy_fees)
 
                 # BUY WITH CASH
                 amount_to_invest = min(amount_to_invest, wallet.cash)
                 if amount_to_invest > 0.0:
-                    fees = asset.buy(amount_to_invest, t, current_dd)
-                    wallet.spend(amount_to_invest)
-                    wallet.pay_fees(fees)
-                    wallet.track_buy(lev_factor, current_day)
+                    success, fees = asset.cash_buy(amount_to_invest, t, current_dd)
+                    if success:
+                        wallet.spend(amount_to_invest)
+                        wallet.pay_fees(fees)
+                        wallet.track_buy(lev_factor, current_day)
 
     def sell_or_rotate(self, wallet, t, current_dd, current_day, interactive=False):
         for lev_factor in self.assets:
@@ -215,9 +235,11 @@ class ThresholdsStrategy(Strategy):
 
         # Initialise wallet
         wallet = Wallet(self.initial_capital)
+        # "x1_save" allows fractional because it will be a fund, not an ETF
         wallet.add_asset("x1_save", Asset("S&P500 x1", prices, -1,  "none", -1, self.log_path))
         for asset in self.assets:
-            wallet.add_asset(asset, Asset(f"S&P500 {asset}", prices_dict[asset], self.initial_capital * self.max_pcts[asset], self.yield_targets[asset], self.yield_values[asset], self.log_path))
+            wallet.add_asset(asset, Asset(f"S&P500 {asset}", prices_dict[asset], self.initial_capital * self.max_pcts[asset],
+                                          self.yield_targets[asset], self.yield_values[asset], self.log_path, self.allow_fractional))
 
         # Compute prices, ath, drawdowns and max drawdowns along the whole dataset
         for t in range(len(prices)):
@@ -231,10 +253,10 @@ class ThresholdsStrategy(Strategy):
             if self.risk_control:
                 self.update_x3_pause_state(current_dd, prices, t)
 
-            # BUY OR ROTATE
+            # Buy or rotate
             self.buy_or_rotate(wallet, t, current_dd, current_day, interactive)
 
-            # SELL OR ROTATE
+            # Sell or rotate
             self.sell_or_rotate(wallet, t, current_dd, current_day, interactive)
 
             # Add debt financial costs (daily interest rate)
