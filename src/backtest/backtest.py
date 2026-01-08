@@ -186,8 +186,8 @@ def run():
 
     # Parameters
     initial_capital = st.number_input("Initial capital", 1_000, 1_000_000, 10_000)
-    start_date = st.date_input("Start date", value=date(2020, 1, 1), min_value=date(1900, 1, 1))
-    end_date = st.date_input("End date", value="today", min_value=date(1900, 1, 1))
+    start_date = st.date_input("Start date", value=date(2000, 1, 1), min_value=date(1900, 1, 1))
+    end_date = st.date_input("End date", value=date(2010, 12, 31), min_value=date(1900, 1, 1))
     strategy_key = st.selectbox(
         "Investment strategy",
         options=list(STRATEGY_BUILDERS.keys()),

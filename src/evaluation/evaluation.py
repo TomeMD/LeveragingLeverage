@@ -1,12 +1,12 @@
+import time
 import pandas as pd
 import streamlit as st
 from src.evaluation.batch_evaluation import evaluate_all_configurations
 from src.backtest.strategy.builders import STRATEGY_BUILDERS
 from src.evaluation.configs import build_all_configurations, PERIODS
 
-
 SCORE_FORMULA = [
-    {"weight":  2.0, "metric": "cagr"},
+    {"weight": 2.0, "metric": "cagr"},
     {"weight": -0.5, "metric": "tuw"},
 ]
 
@@ -15,6 +15,7 @@ def asc_is_better(metric):
     if metric == "tuw":
         return True
     return False
+
 
 def flatten_results(results):
     dfs = []
@@ -40,7 +41,7 @@ def formula_str(formula, normalizer_name="min-max normalized"):
         w = term["weight"]
         metric = term["metric"].replace("_", " ").upper()
 
-        sign = "\+" if w > 0 else "−"
+        sign = "" if w > 0 else "−"
         abs_w = abs(w)
 
         terms.append(f"- {sign} {abs_w:g} × {metric}")
@@ -161,7 +162,6 @@ def show_config_drilldown(df):
 
 
 def run():
-
     if not st.session_state.get('df_loaded', False):
         st.info("Upload a CSV file or download the data from Yahoo Finance")
         st.stop()
@@ -187,10 +187,12 @@ def run():
         with st.spinner(f"Building configurations..."):
             configs = build_all_configurations()
 
-        #if st.session_state.get('evaluation_results') is None or updated:
+        start = time.time()
         with st.spinner(f"Evaluating {len(configs)} configurations..."):
             results = evaluate_all_configurations(strategy_builder, configs, PERIODS, df)
             st.session_state.evaluation_results = results
+        end = time.time()
+        st.info(f"Successfully evaluated {len(configs)} configurations in {end - start:>.2f} seconds")
 
     # Select reference metric to choose best strategy
     ref_metric = st.selectbox(
@@ -204,6 +206,7 @@ def run():
         }[k],
     )
 
+    # Show results
     if st.session_state.get('evaluation_results') is not None:
         global_results = flatten_results(st.session_state.evaluation_results)
         global_results = augment_metrics(global_results)
