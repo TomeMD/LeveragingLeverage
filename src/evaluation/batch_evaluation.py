@@ -37,6 +37,7 @@ class BacktestSummary:
     gross_value: float
     tuw: float
     cagr: float
+    adjusted_cagr: float
     base_debt_time: int
     base_debt_cost: float
     base_scenario: float
@@ -57,6 +58,7 @@ def retrieve_backtest_results(strategy, input_data):
     result["tuw"] /= elapsed_days  # Normalise value as a percentage of total number of days
     net_value = result["gross_value"] - result["debt_cost"] - result["fees_paid"]
     result["cagr"] = (max(net_value, 0.0) / INITIAL_CAPITAL) ** (365 / elapsed_days) - 1
+    result["adjusted_cagr"] = (max(net_value, 0.0) / INITIAL_CAPITAL) ** (365 / result["debt_time"]) - 1
 
     # Add baseline scenario metrics
     result["base_scenario"] = INITIAL_CAPITAL * last_price / first_price
@@ -107,6 +109,7 @@ def evaluate_threshold_config(strategy_builder, df, periods, config_values) -> p
                 debt_time=metrics["debt_time"],
                 gross_value=metrics["gross_value"],
                 cagr=metrics["cagr"],
+                adjusted_cagr=metrics["adjusted_cagr"],
                 tuw=metrics["tuw"],
                 base_debt_time=metrics["base_debt_time"],
                 base_debt_cost=metrics["base_debt_cost"],

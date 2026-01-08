@@ -33,7 +33,7 @@ def create_entry_thresholds_input():
     )
 
     data = [{"drawdown": k, "buy_pct": v[0], "asset": v[1]} for k, v in ENTRY_THRESHOLDS_SPACE[thresholds_key].items()]
-    default_thresholds_df=pd.DataFrame(data)
+    default_thresholds_df = pd.DataFrame(data)
 
     thresholds_df = st.data_editor(
         default_thresholds_df,
@@ -121,13 +121,22 @@ def render_backtest_result(start_day, end_day, strategy_params, input_dfs, resul
 
     cash = result["cash"]
     total_value = cash + invested_value
+    elapsed_days = end_day - start_day
 
     # Compute base scenario
     first_price = x1.loc[x1['Date'].idxmin(), 'Adj Close']
     last_price = x1.loc[x1['Date'].idxmax(), 'Adj Close']
     expected_value = initial_capital * last_price / first_price
-    base_debt_time = end_day - start_day
+    base_debt_time = elapsed_days
     base_debt_cost = initial_capital * base_debt_time * (debt_yield / 360)
+    base_net_value = expected_value - base_debt_cost
+    base_cagr = (max(base_net_value, 0.0) / initial_capital) ** (365 / elapsed_days) - 1
+
+
+    tuw = result["tuw"] / elapsed_days  # Normalise value as a percentage of total number of days
+    net_value = total_value - result["debt_cost"] - result["fees_paid"]
+    cagr = (max(net_value, 0.0) / initial_capital) ** (365 / elapsed_days) - 1
+    adjusted_cagr = (max(net_value, 0.0) / initial_capital) ** (365 / result['debt_time']) - 1
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Cash", f"{cash:,.2f} €")
@@ -138,6 +147,12 @@ def render_backtest_result(start_day, end_day, strategy_params, input_dfs, resul
 
     fig = plot_wallet_chart(assets)
     st.plotly_chart(fig, width='stretch')
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("CAGR", f"{cagr:,.2%}")
+    c2.metric("Adjusted CAGR", f"{adjusted_cagr:,.2%}")
+    c3.metric("Time Under Water", f"{tuw:,.2%}")
+    c4.metric("Base CAGR", f"{base_cagr:,.2%}")
 
 
 def update_data(start_date, end_date, df):

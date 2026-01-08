@@ -73,14 +73,15 @@ def show_global_kpis(ref_metric, df):
 
     best_df = df[df["config"] == best_config]
 
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     c1.metric("🏆 Best config", best_config, help=best_config)
 
-    c2.metric("Avg CAGR", f"{best_df['cagr'].mean():.2%}")
-    c3.metric("Avg debt cost", f"{best_df['debt_cost'].mean():,.0f} €")
-    c4.metric("Avg score", f"{best_df['score'].mean():.2f}", help=formula_str(SCORE_FORMULA))
-    c5.metric("Avg Time Under Water", f"{best_df['tuw'].mean():.2f}")
-    c6.metric("Worst period score", f"{best_df['score'].min():.2f}")
+    c2.metric("Avg CAGR", f"{best_df['cagr'].mean():.2%}", help="Compound Annual Growth Rate (CAGR)")
+    c3.metric("Avg Adjusted CAGR", f"{best_df['adjusted_cagr'].mean():.2%}", help="CAGR adjusted by the amount of days invested")
+    c4.metric("Avg debt cost", f"{best_df['debt_cost'].mean():,.0f} €")
+    c5.metric("Avg score", f"{best_df['score'].mean():.2f}", help=formula_str(SCORE_FORMULA))
+    c6.metric("Avg TUW", f"{best_df['tuw'].mean():.2%}", help="Time Under Water (TUW)")
+    c7.metric("Worst period score", f"{best_df['score'].min():.2f}")
 
 
 def show_global_ranking(ref_metric, df):
@@ -194,12 +195,12 @@ def run():
     # Select reference metric to choose best strategy
     ref_metric = st.selectbox(
         "Reference metric",
-        options=["score", "cagr", "excess_cagr", "tuw"],
+        options=["score", "cagr", "adjusted_cagr", "tuw"],
         format_func=lambda k: {
             "score": "Score",
-            "cagr": "Compound Annual Growth Rate (CAGR)",
-            "excess_cagr": "CAGR / Base CAGR",
-            "tuw": "Time Under Water (TUW)",
+            "cagr": "CAGR",
+            "adjusted_cagr": "Adjusted CAGR",
+            "tuw": "TUW",
         }[k],
     )
 
