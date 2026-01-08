@@ -9,7 +9,7 @@ st.session_state['PROJECT_DIR'] = os.path.realpath(os.path.dirname(os.path.dirna
 
 st.set_page_config(page_title="Leverage Strategy", page_icon="📈", layout="wide")
 
-st.title("📈 Leverage Strategy")
+st.title("📈 Leveraging Leverage")
 
 # Load style
 st.markdown("""
@@ -73,36 +73,3 @@ elif page == "ℹ️ Dataset Info":
 
 elif page == "⚙️ Settings":
     st.info("Settings is not yet implemented")
-
-
-
-# --- MAIN SECTION WITH FILTERS AND PLOTS ---
-#st.header("2) Filtrado y exploración")
-
-# Slider por días para filtrar (int) — así el usuario puede moverse rápidamente
-#min_day = int(df['Days'].min())
-#max_day = int(df['Days'].max())
-#start_day, end_day = st.slider("Rango (Days) — usa el slider para moverte entre fechas", min_value=min_day, max_value=max_day, value=(min_day, max_day), step=1)
-#start_date = (df[date_col].min() + pd.Timedelta(days=start_day)).date()
-#end_date = (df[date_col].min() + pd.Timedelta(days=end_day)).date()
-
-#filtered = df[(df['Days'] >= start_day) & (df['Days'] <= end_day)].copy()
-#st.write(f"Registros en rango: {len(filtered)} — {start_date} a {end_date}")
-
-
-
-
-
-
-
-
-#numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-#if numeric_cols:
-#    selected_col = st.selectbox("Columna numérica a graficar", options=numeric_cols)
-#    st.plotly_chart(plot_timeseries(df, date_col=date_col, value_col=selected_col, title=f"{selected_col} en rango seleccionado"), use_container_width=True)
-#else:
-#    st.info("No hay columnas numéricas para graficar en el dataset filtrado.")
-
-
-
-# Footer: opciones de export

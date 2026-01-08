@@ -1,8 +1,6 @@
-# 📈 Leverage Strategy
+# 📈 Leveraging Leverage
 
 A compact backtesting framework for medium-term trading strategies, built to evaluate leveraged exposures under severe drawdowns and crisis regimes. The engine explicitly models borrowed capital: borrowing interest is applied daily, so strategies that remain invested longer incur larger financing penalties. This design highlights trade-offs between aggressive leverage and time-at-risk during downturns.
-
-
 
 ## What this project does
 - Generates synthetic leveraged NAVs from a base price series (e.g., market index such as S&P500) to simulate x2, x3,...
