@@ -91,6 +91,7 @@ def show_global_ranking(ref_metric, df):
         .agg(
             avg_score=("score", "mean"),
             avg_cagr=("cagr", "mean"),
+            avg_adjusted_cagr=("adjusted_cagr", "mean"),
             avg_tuw=("tuw", "mean"),
             avg_excess_cagr=("excess_cagr", "mean"),
             worst_score=("score", "min"),
