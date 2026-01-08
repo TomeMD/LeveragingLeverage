@@ -2,6 +2,8 @@
 
 A compact backtesting framework for medium-term trading strategies, built to evaluate leveraged exposures under severe drawdowns and crisis regimes. The engine explicitly models borrowed capital: borrowing interest is applied daily, so strategies that remain invested longer incur larger financing penalties. This design highlights trade-offs between aggressive leverage and time-at-risk during downturns.
 
+<img src="img/logo.png" alt="LeveragingLeverage Logo" style="zoom: 33%;" />
+
 ## What this project does
 - Generates synthetic leveraged NAVs from a base price series (e.g., market index such as S&P500) to simulate x2, x3,...
 - Runs threshold-driven buying strategies that target purchases based on drawdowns and market-state signals (e.g., ma200, high-low).
