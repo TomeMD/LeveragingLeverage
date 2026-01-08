@@ -58,7 +58,7 @@ def retrieve_backtest_results(strategy, input_data):
     result["tuw"] /= elapsed_days  # Normalise value as a percentage of total number of days
     net_value = result["gross_value"] - result["debt_cost"] - result["fees_paid"]
     result["cagr"] = (max(net_value, 0.0) / INITIAL_CAPITAL) ** (365 / elapsed_days) - 1
-    result["adjusted_cagr"] = (max(net_value, 0.0) / INITIAL_CAPITAL) ** (365 / result["debt_time"]) - 1
+    result["adjusted_cagr"] = (max(net_value, 0.0) / INITIAL_CAPITAL) ** (365 / max(result["debt_time"], 1e-9)) - 1
 
     # Add baseline scenario metrics
     result["base_scenario"] = INITIAL_CAPITAL * last_price / first_price

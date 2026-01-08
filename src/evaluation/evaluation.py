@@ -194,20 +194,16 @@ def run():
         end = time.time()
         st.info(f"Successfully evaluated {len(configs)} configurations in {end - start:>.2f} seconds")
 
-    # Select reference metric to choose best strategy
-    ref_metric = st.selectbox(
-        "Reference metric",
-        options=["score", "cagr", "adjusted_cagr", "tuw"],
-        format_func=lambda k: {
-            "score": "Score",
-            "cagr": "CAGR",
-            "adjusted_cagr": "Adjusted CAGR",
-            "tuw": "TUW",
-        }[k],
-    )
 
     # Show results
     if st.session_state.get('evaluation_results') is not None:
+        # Select reference metric to choose best strategy
+        ref_metric = st.selectbox(
+            "Reference metric",
+            options=["score", "cagr", "adjusted_cagr", "tuw"],
+            format_func=lambda k: {"score": "Score", "cagr": "CAGR", "adjusted_cagr": "Adjusted CAGR", "tuw": "TUW"}[k],
+        )
+
         global_results = flatten_results(st.session_state.evaluation_results)
         global_results = augment_metrics(global_results)
 
