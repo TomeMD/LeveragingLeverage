@@ -1,10 +1,16 @@
 @echo off
 
-:: Activar el entorno virtual
+:: Create virtual environment
+call python -m venv my_venv
+
+:: Activate virtual environment
 call my_venv\Scripts\activate.bat
 
-:: Añadir el directorio src al PYTHONPATH
+:: Install requirements on virtual environment
+call pip install -r requirements.txt
+
+:: Add source directory to PYTHONPATH
 set PYTHONPATH=%cd%;%PYTHONPATH%
 
-:: Iniciar la aplicación Streamlit
+:: Start application
 streamlit run src\streamlit_app.py
